@@ -17,7 +17,8 @@ def html_escape(s: str) -> str:
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-@router.message(F.text.regexp(r"^!помощь\b", flags=0) | Command("help"))
+@router.message(F.text.regexp(r"^!помощь\b", flags=0))
+@router.message(Command("help"))
 async def cmd_help(message: Message):
     text = (
         "📖 Доступные команды:\n\n"
