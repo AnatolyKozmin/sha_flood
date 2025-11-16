@@ -1,0 +1,13 @@
+aiogram==3.22.0
+sqlalchemy==2.0.44
+aiosqlite==0.20.0
+asyncpg==0.29.0
+aiofiles==24.1.0
+pydantic==2.11.10
+pydantic-settings==2.8.0
+openpyxl==3.1.5
+python-dotenv==1.0.1
+Pillow==11.0.0
+python-dateutil==2.9.0.post0
+alembic==1.13.3
+
