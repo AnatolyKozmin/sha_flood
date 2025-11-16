@@ -1,9 +1,15 @@
 import asyncio
+import sys
+from pathlib import Path
 from logging.config import fileConfig
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy import engine_from_config
 from alembic import context
+
+# Добавляем корень проекта в sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from config import settings
 from database.models import Base
 
@@ -24,7 +30,11 @@ def get_url() -> str:
     # Prefer explicit DB_URL; otherwise use postgres_url (for docker)
     db = settings.DB_URL
     if "sqlite" not in db:
-        return settings.postgres_url
+        # Alembic работает синхронно, поэтому используем psycopg2 вместо asyncpg
+        pg_url = settings.postgres_url
+        if "asyncpg" in pg_url:
+            pg_url = pg_url.replace("asyncpg", "psycopg2")
+        return pg_url
     return db
 
 
