@@ -5,8 +5,9 @@ services:
     image: postgres:15
     restart: always
     environment:
-      POSTGRES_DB: sha_db
-      POSTGRES_USER: sha
+      POSTGRES_DB: ${POSTGRES_DB:-vshu_db}
+      POSTGRES_USER: ${POSTGRES_USER:-vshu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-1234}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
