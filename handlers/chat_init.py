@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import Message, ChatMemberUpdated, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
-from aiogram.filters import ChatMemberUpdatedFilter, MEMBER, ADMINISTRATOR
+from aiogram.filters import ChatMemberUpdatedFilter, MEMBER, ADMINISTRATOR, Command
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
