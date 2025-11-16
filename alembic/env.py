@@ -27,14 +27,26 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    # Prefer explicit DB_URL; otherwise use postgres_url (for docker)
+    # Если DB_URL явно указан и это не SQLite - используем его
     db = settings.DB_URL
-    if "sqlite" not in db:
+    if "sqlite" not in db.lower():
+        # Alembic работает синхронно, поэтому используем psycopg2 вместо asyncpg
+        if "asyncpg" in db:
+            db = db.replace("asyncpg", "psycopg2")
+        return db
+    
+    # Если DB_URL указывает на SQLite по умолчанию, но есть настройки PostgreSQL - используем PostgreSQL
+    # Проверяем, что POSTGRES_HOST установлен (в Docker это будет 'db')
+    if settings.POSTGRES_HOST and settings.POSTGRES_HOST != 'localhost':
         # Alembic работает синхронно, поэтому используем psycopg2 вместо asyncpg
         pg_url = settings.postgres_url
         if "asyncpg" in pg_url:
             pg_url = pg_url.replace("asyncpg", "psycopg2")
         return pg_url
+    
+    # Иначе используем SQLite (но для синхронного режима нужен sqlite3, а не aiosqlite)
+    if "aiosqlite" in db:
+        db = db.replace("aiosqlite", "sqlite3")
     return db
 
 
