@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from datetime import datetime
 import openpyxl
 from sqlalchemy import select
 
@@ -46,9 +47,12 @@ async def load_users_from_excel(excel_path: str):
                 continue
             
             # Безопасное получение значения по индексу
-            def get_value(idx, default=None):
+            def get_value(idx, default=None, as_string=True):
                 if idx < len(row) and row[idx] is not None:
-                    return str(row[idx]).strip() if str(row[idx]).strip() else default
+                    val = row[idx]
+                    if as_string:
+                        return str(val).strip() if str(val).strip() else default
+                    return val
                 return default
             
             # Извлекаем данные
@@ -66,7 +70,31 @@ async def load_users_from_excel(excel_path: str):
             if telegram_username and telegram_username.startswith('@'):
                 telegram_username = telegram_username[1:]  # Убираем @
             
-            birth_date = get_value(3)
+            # Обработка даты рождения (получаем сырое значение без преобразования в строку)
+            birth_date = None
+            birth_date_val = get_value(3, as_string=False)
+            if birth_date_val is not None:
+                # Если это datetime объект (openpyxl может вернуть datetime)
+                if isinstance(birth_date_val, datetime):
+                    birth_date = birth_date_val.strftime('%d.%m.%Y')
+                elif isinstance(birth_date_val, str):
+                    # Если это строка, проверяем формат
+                    birth_date_val = birth_date_val.strip()
+                    if not birth_date_val:
+                        birth_date = None
+                    elif len(birth_date_val) <= 10 and '.' in birth_date_val:
+                        # Уже в формате DD.MM.YYYY
+                        birth_date = birth_date_val[:10]
+                    else:
+                        # Пробуем распарсить разные форматы
+                        try:
+                            # Формат '2004-05-26 00:00:00' или '2004-05-26'
+                            date_part = birth_date_val.split()[0] if ' ' in birth_date_val else birth_date_val
+                            dt = datetime.strptime(date_part, '%Y-%m-%d')
+                            birth_date = dt.strftime('%d.%m.%Y')
+                        except ValueError:
+                            # Если не получилось, обрезаем до 10 символов
+                            birth_date = birth_date_val[:10] if len(birth_date_val) > 10 else birth_date_val
             faculty = get_value(4)
             
             # Курс обучения
