@@ -285,25 +285,45 @@ async def cmd_probability(message: Message):
 async def cmd_beer_pour(message: Message):
     # Проверяем, есть ли у пользователя "ТП" в поле department
     user_id = message.from_user.id
+    username = (message.from_user.username or "").lower().strip()
+    user_full_name = message.from_user.full_name or ""
+    
     async with AsyncSessionLocal() as session:
-        # Ищем пользователя по telegram_id или telegram_username
+        # Ищем пользователя по telegram_id, telegram_username или по имени
+        conditions = [User.telegram_id == user_id]
+        
+        if username:
+            conditions.append(User.telegram_username.ilike(f"%{username}%"))
+        
+        if user_full_name:
+            conditions.append(User.full_name.ilike(f"%{user_full_name}%"))
+        
         result = await session.execute(
-            select(User).where(
-                or_(
-                    User.telegram_id == user_id,
-                    User.telegram_username == (message.from_user.username or "")
-                )
-            )
+            select(User).where(or_(*conditions))
         )
         user = result.scalar_one_or_none()
+        
+        # Если не нашли по точному совпадению, пробуем найти по части имени
+        if not user and user_full_name:
+            # Берем первую часть имени (фамилию)
+            name_parts = user_full_name.split()
+            if name_parts:
+                first_name_part = name_parts[0]
+                result = await session.execute(
+                    select(User).where(User.full_name.ilike(f"%{first_name_part}%"))
+                )
+                users = result.scalars().all()
+                # Если нашли одного - используем его
+                if len(users) == 1:
+                    user = users[0]
         
         # Проверяем, есть ли "ТП" в department
         has_tp = False
         if user and user.department:
             has_tp = "ТП" in user.department.upper()
         
+        # Если пользователь не найден в базе или не является ТП - запрещаем
         if not has_tp:
-            # Если нет "ТП", отправляем сообщение и стикер
             await message.answer("Пиво только для тп, остальным компотик 😘😜😁😆🖤")
             return
     
