@@ -38,6 +38,7 @@ async def cmd_help(message: Message):
         "• !статистика пива — рейтинг по пиву\n"
         "• !адрес [фамилия] — адрес организатора\n"
         "• !перепарсить — перезагрузить данные из Excel (только для админов)\n"
+        "• !кто [текст] — случайный человек и упоминание\n"
     )
     await message.answer(text, parse_mode=None)
 
@@ -336,6 +337,36 @@ async def cmd_address(message: Message):
 async def cmd_obosnovat(message: Message):
     target = message.reply_to_message.from_user
     await message.answer(f"{target.mention_html()} а тебя это ебать не должно", parse_mode="HTML")
+
+
+@router.message(F.text.regexp(r"^!кто\s+(.+)", flags=0))
+async def cmd_who(message: Message):
+    """Выбирает случайного человека и отправляет сообщение с упоминанием"""
+    text = (message.text or "").split(maxsplit=1)[1].strip()
+    
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(User))
+        users = result.scalars().all()
+    
+    if not users:
+        await message.answer("❌ В базе нет организаторов.")
+        return
+    
+    user = random.choice(users)
+    user_name = html_escape(user.full_name)
+    
+    # Формируем сообщение в формате: {текст} - {человек}\n\n@{тег}
+    # Если есть telegram_username, используем его
+    if user.telegram_username:
+        mention = f"@{user.telegram_username}"
+    else:
+        # Если нет username, создаем тег из имени (заменяем пробелы на подчеркивания)
+        mention = f"@{user_name.replace(' ', '_')}"
+    
+    # Формат: {текст} - {человек}, затем две пустые строки, затем @{тег}
+    response = f"{text} - {user_name}\n\n{mention}"
+    
+    await message.answer(response, parse_mode="HTML")
 
 
 @router.message(F.text.regexp(r"^!перепарсить\b", flags=0))
