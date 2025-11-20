@@ -8,6 +8,10 @@ __pycache__
 
 # Excel files with data
 
+# Excel temporary files
+~$*.xlsx
+*.xlsx#
+.~lock.*
 
 # Python
 *.pyc

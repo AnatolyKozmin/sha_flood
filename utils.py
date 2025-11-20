@@ -45,9 +45,15 @@ async def load_users_from_excel(excel_path: str):
             if not row or not any(row):
                 continue
             
+            # Безопасное получение значения по индексу
+            def get_value(idx, default=None):
+                if idx < len(row) and row[idx] is not None:
+                    return str(row[idx]).strip() if str(row[idx]).strip() else default
+                return default
+            
             # Извлекаем данные
-            full_name = str(row[0]).strip() if row[0] else None
-            department = str(row[1]).strip() if row[1] else None
+            full_name = get_value(0)
+            department = get_value(1)
             
             # Проверяем обязательные поля
             if not full_name or not department:
@@ -56,26 +62,27 @@ async def load_users_from_excel(excel_path: str):
                 continue
             
             # Извлекаем необязательные поля
-            telegram_username = str(row[2]).strip() if row[2] and str(row[2]).strip() else None
+            telegram_username = get_value(2)
             if telegram_username and telegram_username.startswith('@'):
                 telegram_username = telegram_username[1:]  # Убираем @
             
-            birth_date = str(row[3]).strip() if row[3] and str(row[3]).strip() else None
-            faculty = str(row[4]).strip() if row[4] and str(row[4]).strip() else None
+            birth_date = get_value(3)
+            faculty = get_value(4)
             
             # Курс обучения
             course = None
-            if row[5]:
+            course_val = get_value(5)
+            if course_val:
                 try:
-                    course = int(row[5])
+                    course = int(course_val)
                 except (ValueError, TypeError):
                     pass
             
-            study_group = str(row[6]).strip() if row[6] and str(row[6]).strip() else None
-            phone_number = str(row[7]).strip() if row[7] and str(row[7]).strip() else None
-            has_car = str(row[8]).strip() if row[8] and str(row[8]).strip() else None
-            nearest_metro = str(row[9]).strip() if row[9] and str(row[9]).strip() else None
-            address = str(row[10]).strip() if row[10] and str(row[10]).strip() else None
+            study_group = get_value(6)
+            phone_number = get_value(7)
+            has_car = get_value(8)
+            nearest_metro = get_value(9)
+            address = get_value(10)
             
             # Проверяем, существует ли уже пользователь с таким ФИО
             result = await session.execute(
