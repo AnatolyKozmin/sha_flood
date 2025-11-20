@@ -283,6 +283,30 @@ async def cmd_probability(message: Message):
 
 @router.message(F.text.regexp(r"^!пиво\b", flags=0))
 async def cmd_beer_pour(message: Message):
+    # Проверяем, есть ли у пользователя "ТП" в поле department
+    user_id = message.from_user.id
+    async with AsyncSessionLocal() as session:
+        # Ищем пользователя по telegram_id или telegram_username
+        result = await session.execute(
+            select(User).where(
+                or_(
+                    User.telegram_id == user_id,
+                    User.telegram_username == (message.from_user.username or "")
+                )
+            )
+        )
+        user = result.scalar_one_or_none()
+        
+        # Проверяем, есть ли "ТП" в department
+        has_tp = False
+        if user and user.department:
+            has_tp = "ТП" in user.department.upper()
+        
+        if not has_tp:
+            # Если нет "ТП", отправляем сообщение и стикер
+            await message.answer("Пиво только для тп, остальным компотик 😘😜😁😆🖤")
+            return
+    
     # Ожидаем ответ на сообщение пользователя или упоминание
     target_id = None
     target_name = None
