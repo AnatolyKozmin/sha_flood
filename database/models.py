@@ -84,3 +84,19 @@ class Wakeup(Base):
     wake_at = Column(DateTime, index=True, nullable=False)
     done = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class MathDuel(Base):
+    """Активные математические дуэли"""
+    __tablename__ = 'math_duels'
+
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, index=True, nullable=False)
+    user1_id = Column(BigInteger, index=True, nullable=False)  # Тот, кто вызвал на дуэль
+    user2_id = Column(BigInteger, index=True, nullable=False)  # Тот, на кого ответили
+    num1 = Column(Integer, nullable=False)
+    num2 = Column(Integer, nullable=False)
+    correct_answer = Column(Integer, nullable=False)
+    winner_id = Column(BigInteger, nullable=True)  # Кто выиграл
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    expired = Column(Boolean, default=False, index=True)

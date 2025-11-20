@@ -2,13 +2,13 @@ from aiogram import Router, F
 from aiogram.types import Message, ChatPermissions
 from aiogram.filters import Command
 from aiogram.utils.markdown import hbold
-from sqlalchemy import select, update, or_
+from sqlalchemy import select, update, or_, and_
 from datetime import datetime, timedelta
 import random
 from io import BytesIO
 
 from database.engine import AsyncSessionLocal
-from database.models import User, Quote, BeerStat, Wakeup
+from database.models import User, Quote, BeerStat, Wakeup, MathDuel
 from utils import load_users_from_excel
 from pathlib import Path
 
@@ -39,6 +39,10 @@ async def cmd_help(message: Message):
         "• !адрес [фамилия] — адрес организатора\n"
         "• !перепарсить — перезагрузить данные из Excel (только для админов)\n"
         "• !кто [текст] — случайный человек и упоминание\n"
+        "• !дуель (в ответ) — рандомный мут на 10 мин\n"
+        "• !матдуэль (в ответ) — математическая дуэль\n"
+        "• !анмут — размутить всех в муте\n"
+        "• !вокабулар — словарь сленга\n"
     )
     await message.answer(text, parse_mode=None)
 
@@ -453,5 +457,310 @@ async def cmd_reparse(message: Message):
         await message.answer("✅ Данные успешно перезагружены из Excel файла!")
     except Exception as e:
         await message.answer(f"❌ Ошибка при загрузке данных: {html_escape(str(e))}", parse_mode="HTML")
+
+
+@router.message(F.reply_to_message & F.text.regexp(r"^!дуель\b", flags=0))
+async def cmd_duel(message: Message):
+    """Дуэль: рандомно мьютит одного из двух участников на 10 минут"""
+    if message.chat.type == 'private':
+        await message.answer("❌ Эта команда доступна только в групповых чатах!")
+        return
+    
+    challenger = message.from_user
+    target = message.reply_to_message.from_user
+    
+    if challenger.id == target.id:
+        await message.answer("❌ Нельзя вызвать на дуэль самого себя!")
+        return
+    
+    # Рандомно выбираем, кого мьютить
+    loser = random.choice([challenger, target])
+    winner = target if loser.id == challenger.id else challenger
+    
+    until = datetime.utcnow() + timedelta(minutes=10)
+    try:
+        await message.bot.restrict_chat_member(
+            chat_id=message.chat.id,
+            user_id=loser.id,
+            permissions=ChatPermissions(can_send_messages=False),
+            until_date=until
+        )
+        await message.answer(
+            f"⚔️ Дуэль! {loser.mention_html()} проиграл и замьючен на 10 минут. "
+            f"{winner.mention_html()} победил! 🎉",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        await message.answer(f"❌ Не удалось выдать мут (нет прав у бота?). Ошибка: {str(e)}")
+
+
+@router.message(F.reply_to_message & F.text.regexp(r"^!матдуэль\b", flags=0))
+async def cmd_math_duel(message: Message):
+    """Математическая дуэль: кто первый правильно ответит, тот выиграл"""
+    if message.chat.type == 'private':
+        await message.answer("❌ Эта команда доступна только в групповых чатах!")
+        return
+    
+    challenger = message.from_user
+    target = message.reply_to_message.from_user
+    
+    if challenger.id == target.id:
+        await message.answer("❌ Нельзя вызвать на дуэль самого себя!")
+        return
+    
+    # Генерируем два трехзначных числа
+    num1 = random.randint(100, 999)
+    num2 = random.randint(100, 999)
+    correct_answer = num1 + num2
+    
+    async with AsyncSessionLocal() as session:
+        # Проверяем, нет ли уже активной дуэли между этими пользователями
+        result = await session.execute(
+            select(MathDuel).where(
+                MathDuel.chat_id == message.chat.id,
+                MathDuel.expired == False,
+                or_(
+                    and_(MathDuel.user1_id == challenger.id, MathDuel.user2_id == target.id),
+                    and_(MathDuel.user1_id == target.id, MathDuel.user2_id == challenger.id)
+                )
+            )
+        )
+        existing_duel = result.scalar_one_or_none()
+        
+        if existing_duel:
+            await message.answer("❌ У вас уже есть активная дуэль! Сначала завершите её.")
+            return
+        
+        # Создаем новую дуэль
+        duel = MathDuel(
+            chat_id=message.chat.id,
+            user1_id=challenger.id,
+            user2_id=target.id,
+            num1=num1,
+            num2=num2,
+            correct_answer=correct_answer
+        )
+        session.add(duel)
+        await session.commit()
+    
+    await message.answer(
+        f"🧮 Математическая дуэль!\n\n"
+        f"{challenger.mention_html()} vs {target.mention_html()}\n\n"
+        f"Сколько будет: <b>{num1} + {num2}</b>?\n\n"
+        f"Кто первый напишет правильный ответ - выиграл! Проигравший в мут на 10 минут!",
+        parse_mode="HTML"
+    )
+
+
+@router.message(F.text.regexp(r"^!анмут\b", flags=0))
+async def cmd_unmute_all(message: Message):
+    """Размучивает всех пользователей в чате"""
+    if message.chat.type == 'private':
+        await message.answer("❌ Эта команда доступна только в групповых чатах!")
+        return
+    
+    # Проверяем права администратора
+    member = await message.bot.get_chat_member(message.chat.id, message.from_user.id)
+    if member.status not in ['creator', 'administrator']:
+        await message.answer("❌ Только администраторы могут размучивать всех!")
+        return
+    
+    try:
+        # Получаем список администраторов для получения полных прав
+        full_permissions = ChatPermissions(
+            can_send_messages=True,
+            can_send_audios=True,
+            can_send_documents=True,
+            can_send_photos=True,
+            can_send_videos=True,
+            can_send_video_notes=True,
+            can_send_voice_notes=True,
+            can_send_polls=True,
+            can_send_other_messages=True,
+            can_add_web_page_previews=True,
+            can_change_info=True,
+            can_invite_users=True,
+            can_pin_messages=True
+        )
+        
+        unmuted_count = 0
+        # Пробуем размутить известных пользователей из базы данных (из статистики пива и цитат)
+        async with AsyncSessionLocal() as session:
+            # Получаем всех уникальных user_id из различных таблиц
+            from sqlalchemy import distinct
+            result = await session.execute(
+                select(distinct(BeerStat.user_id)).where(BeerStat.chat_id == message.chat.id)
+            )
+            user_ids = [row[0] for row in result.all()]
+            
+            result = await session.execute(
+                select(distinct(Quote.author_user_id)).where(Quote.chat_id == message.chat.id)
+            )
+            quote_user_ids = [row[0] for row in result.all()]
+            user_ids.extend(quote_user_ids)
+            
+            # Убираем дубликаты
+            user_ids = list(set(user_ids))
+        
+        # Пробуем размутить каждого пользователя
+        for user_id in user_ids:
+            try:
+                member = await message.bot.get_chat_member(message.chat.id, user_id)
+                if member.status == 'restricted' and not member.can_send_messages:
+                    await message.bot.restrict_chat_member(
+                        chat_id=message.chat.id,
+                        user_id=user_id,
+                        permissions=full_permissions
+                    )
+                    unmuted_count += 1
+            except Exception:
+                pass
+        
+        if unmuted_count > 0:
+            await message.answer(f"✅ Размучено пользователей: {unmuted_count}")
+        else:
+            await message.answer("ℹ️ Нет замученных пользователей в этом чате (или они не найдены в базе).")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при размуте: {html_escape(str(e))}", parse_mode="HTML")
+
+
+# Обработчик ответов на математическую дуэль
+@router.message(F.text.regexp(r"^\d+$", flags=0))
+async def handle_math_duel_answer(message: Message):
+    """Обрабатывает ответы на математическую дуэль"""
+    if message.chat.type == 'private':
+        return
+    
+    try:
+        answer = int(message.text.strip())
+    except ValueError:
+        return
+    
+    user_id = message.from_user.id
+    
+    async with AsyncSessionLocal() as session:
+        # Ищем активную дуэль с участием этого пользователя
+        result = await session.execute(
+            select(MathDuel).where(
+                MathDuel.chat_id == message.chat.id,
+                MathDuel.expired == False,
+                or_(
+                    MathDuel.user1_id == user_id,
+                    MathDuel.user2_id == user_id
+                )
+            )
+        )
+        duel = result.scalar_one_or_none()
+        
+        if not duel:
+            return
+        
+        # Проверяем правильность ответа
+        if answer == duel.correct_answer:
+            # Правильный ответ - этот пользователь выиграл
+            winner = message.from_user
+            loser_id = duel.user2_id if duel.user1_id == winner.id else duel.user1_id
+            
+            # Получаем информацию о проигравшем
+            try:
+                loser_member = await message.bot.get_chat_member(message.chat.id, loser_id)
+                loser_name = loser_member.user.full_name
+            except Exception:
+                loser_name = f"id:{loser_id}"
+            
+            # Мьютим проигравшего
+            until = datetime.utcnow() + timedelta(minutes=10)
+            try:
+                await message.bot.restrict_chat_member(
+                    chat_id=message.chat.id,
+                    user_id=loser_id,
+                    permissions=ChatPermissions(can_send_messages=False),
+                    until_date=until
+                )
+            except Exception:
+                pass
+            
+            # Помечаем дуэль как завершенную
+            duel.winner_id = winner.id
+            duel.expired = True
+            await session.commit()
+            
+            await message.answer(
+                f"🎉 {winner.mention_html()} выиграл математическую дуэль!\n\n"
+                f"Правильный ответ: <b>{duel.correct_answer}</b>\n"
+                f"Проигравший {loser_name} замьючен на 10 минут!",
+                parse_mode="HTML"
+            )
+        # Если ответ неправильный, просто игнорируем (не сообщаем об ошибке, чтобы не спамить)
+
+
+@router.message(F.text.regexp(r"^!вокабулар\b", flags=0))
+async def cmd_vocabulary(message: Message):
+    """Отправляет словарь сленговых слов"""
+    vocab_text = """📚 <b>ВОКАБУЛЯР</b>
+
+<b>Общие слова</b>
+
+1. <b>Кринж/кринге</b> — неловкая, стремная или позорная ситуация.
+
+2. <b>Дратути</b> — шуточное приветствие, искажённое «Здравствуйте».
+
+3. <b>Муд</b> — настроение, состояние.
+
+4. <b>База</b> — полное согласие, одобрение чего-то правильного.
+
+5. <b>Имба</b> — что-то слишком крутое или сильное.
+
+6. <b>Сигма</b> — человек, который живёт по своим правилам.
+
+7. <b>Лол</b> — реакция на смешное или абсурдное.
+
+8. <b>Мимимишный</b> — чрезмерно милый, вызывающий умиление.
+
+9. <b>Токсик</b> — человек с негативным, разрушительным поведением.
+
+10. <b>Хайп</b> — ажиотаж, популярность вокруг чего-то.
+
+11. <b>Се се</b> — сокращённое «все-все», завершение темы.
+
+12. <b>Триггерить</b> — вызывать сильную эмоциональную реакцию.
+
+13. <b>Нямнямки</b> — вкусности, перекус, еда.
+
+14. <b>Вайб</b> — настроение, атмосфера чего-либо.
+
+15. <b>Редфлаг</b> — тревожный знак, сигнал, что в человеке или ситуации что-то не то.
+
+16. <b>Гринфлаг</b> — положительный знак, свидетельство того, что с человеком или ситуацией всё хорошо.
+
+17. <b>Ауф</b> — одобрение, восхищение, синоним «вау».
+
+18. <b>Рофл</b> — шутка, прикол, нечто абсурдное; часто используется как «Это что, рофл?».
+
+19. <b>Залип / залипать</b> — полностью погрузиться во что-то (видео, переписку, музыку).
+
+20. <b>Испанский стыд</b> — чувство неловкости за чужие поступки.
+
+21. <b>Трэш</b> — что-то крайне абсурдное, шокирующее или бессмысленное.
+
+<b>Рабочие слова</b>
+
+1. <b>Апрувнуть</b> — одобрить, согласовать.
+
+2. <b>Фидбэк</b> — обратная связь.
+
+3. <b>Апдейт</b> — обновление информации.
+
+4. <b>Созвон / Колл</b> — онлайн-встреча.
+
+5. <b>Онбординг</b> — адаптация нового сотрудника.
+
+6. <b>Фомо</b> — Fear of Missing Out, страх упустить что-то интересное.
+
+7. <b>Оффтоп</b> — сообщение не по теме.
+
+8. <b>Чекнуть</b> — проверить."""
+    
+    await message.answer(vocab_text, parse_mode="HTML")
 
 
