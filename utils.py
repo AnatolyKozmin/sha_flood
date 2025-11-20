@@ -40,8 +40,9 @@ async def load_users_from_excel(excel_path: str):
     skipped = 0
     
     async with AsyncSessionLocal() as session:
-        # Начинаем со второй строки (первая - заголовки)
-        for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        # Начинаем с первой строки
+        is_first_row = True
+        for row_idx, row in enumerate(ws.iter_rows(min_row=1, values_only=True), start=1):
             # Пропускаем пустые строки
             if not row or not any(row):
                 continue
@@ -54,6 +55,18 @@ async def load_users_from_excel(excel_path: str):
                         return str(val).strip() if str(val).strip() else default
                     return val
                 return default
+            
+            # Проверяем, является ли первая строка заголовками
+            if is_first_row:
+                first_row_values = [str(val).lower().strip() if val else "" for val in row[:5]]
+                # Если первая строка содержит типичные заголовки, пропускаем её
+                header_keywords = ['фио', 'подразделение', 'юзернейм', 'дата', 'фамилия', 'имя', 'отчество']
+                if any(keyword in ' '.join(first_row_values) for keyword in header_keywords):
+                    print(f"📋 Строка {row_idx}: пропущена (заголовки)")
+                    is_first_row = False
+                    skipped += 1
+                    continue
+                is_first_row = False
             
             # Извлекаем данные
             full_name = get_value(0)

@@ -2,13 +2,15 @@ from aiogram import Router, F
 from aiogram.types import Message, ChatPermissions
 from aiogram.filters import Command
 from aiogram.utils.markdown import hbold
-from sqlalchemy import select, update
+from sqlalchemy import select, update, or_
 from datetime import datetime, timedelta
 import random
 from io import BytesIO
 
 from database.engine import AsyncSessionLocal
 from database.models import User, Quote, BeerStat, Wakeup
+from utils import load_users_from_excel
+from pathlib import Path
 
 router = Router()
 
@@ -22,7 +24,7 @@ def html_escape(s: str) -> str:
 async def cmd_help(message: Message):
     text = (
         "📖 Доступные команды:\n\n"
-        "• !инфа [фамилия] — инфо об организаторе\n"
+        "• !инфа [фамилия/юзернейм] — инфо об организаторе\n"
         "• !цитата (в ответ) — сохранить цитату\n"
         "• !мудрость — случайная цитата (картинка)\n"
         "• !рулетка — шанс 1/6 получить мут на 10 мин\n"
@@ -35,18 +37,31 @@ async def cmd_help(message: Message):
         "• !налить пиво (в ответ) — +1 пива пользователю\n"
         "• !статистика пива — рейтинг по пиву\n"
         "• !адрес [фамилия] — адрес организатора\n"
+        "• !перепарсить — перезагрузить данные из Excel (только для админов)\n"
     )
     await message.answer(text, parse_mode=None)
 
 
 @router.message(F.text.regexp(r"^!инфа\s+(.+)", flags=0))
 async def cmd_info(message: Message):
-    surname = (message.text or "").split(maxsplit=1)[1].strip()
+    query = (message.text or "").split(maxsplit=1)[1].strip()
+    
+    # Убираем @ если есть
+    search_query = query.lstrip('@')
+    
     async with AsyncSessionLocal() as session:
-        result = await session.execute(select(User).where(User.full_name.ilike(f"%{surname}%")))
+        # Ищем и по фамилии, и по telegram_username
+        result = await session.execute(
+            select(User).where(
+                or_(
+                    User.full_name.ilike(f"%{search_query}%"),
+                    User.telegram_username.ilike(f"%{search_query}%")
+                )
+            )
+        )
         users = result.scalars().all()
     if not users:
-        await message.answer(f"❌ Не найдено по запросу: <b>{html_escape(surname)}</b>", parse_mode="HTML")
+        await message.answer(f"❌ Не найдено по запросу: <b>{html_escape(query)}</b>", parse_mode="HTML")
         return
     if len(users) == 1:
         u = users[0]
@@ -321,5 +336,45 @@ async def cmd_address(message: Message):
 async def cmd_obosnovat(message: Message):
     target = message.reply_to_message.from_user
     await message.answer(f"{target.mention_html()} а тебя это ебать не должно", parse_mode="HTML")
+
+
+@router.message(F.text.regexp(r"^!перепарсить\b", flags=0))
+async def cmd_reparse(message: Message):
+    """Перезагружает данные из Excel файла"""
+    # Проверяем права администратора
+    if message.chat.type == 'private':
+        await message.answer("❌ Эта команда доступна только в групповых чатах!")
+        return
+    
+    member = await message.bot.get_chat_member(message.chat.id, message.from_user.id)
+    if member.status not in ['creator', 'administrator']:
+        await message.answer("❌ Только администраторы могут перезагружать данные!")
+        return
+    
+    # Ищем файл user_data.xlsx
+    excel_paths = [
+        "user_data.xlsx",
+        "/app/user_data.xlsx",
+        "./user_data.xlsx"
+    ]
+    
+    excel_file = None
+    for path in excel_paths:
+        if Path(path).exists():
+            excel_file = path
+            break
+    
+    if not excel_file:
+        await message.answer("❌ Файл user_data.xlsx не найден!")
+        return
+    
+    await message.answer("🔄 Начинаю перезагрузку данных из Excel...")
+    
+    try:
+        # Загружаем данные
+        await load_users_from_excel(excel_file)
+        await message.answer("✅ Данные успешно перезагружены из Excel файла!")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка при загрузке данных: {html_escape(str(e))}", parse_mode="HTML")
 
 
