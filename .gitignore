@@ -7,6 +7,7 @@ __pycache__
 *.db-journal
 
 # Excel files with data
+
 organizers.xlsx
 
 # Python
