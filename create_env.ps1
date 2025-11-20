@@ -37,7 +37,7 @@ Write-Host ""
 Write-Host "✅ Файл .env успешно создан!" -ForegroundColor Green
 Write-Host ""
 Write-Host "📋 Следующие шаги:" -ForegroundColor Yellow
-Write-Host "1. Разместите файл organizers.xlsx в корне проекта"
+Write-Host "1. Разместите файл user_data.xlsx в корне проекта"
 Write-Host "2. Запустите: docker-compose up -d --build"
 Write-Host "3. Проверьте логи: docker-compose logs -f bot"
 

@@ -21,7 +21,7 @@ services:
     depends_on:
       - db
     volumes:
-      - ./organizers.xlsx:/app/organizers.xlsx:ro  # Монтируем Excel файл (read-only)
+      - ./user_data.xlsx:/app/user_data.xlsx:ro  # Монтируем Excel файл (read-only)
 
 volumes:
   postgres_data:
