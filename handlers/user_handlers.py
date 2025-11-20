@@ -34,7 +34,7 @@ async def cmd_help(message: Message):
         "• !обосновать (в ответ) — адресный ответ\n"
         "• !когда — сколько осталось до 27.11.2025\n"
         "• !вероятность [событие] — шанс в процентах\n"
-        "• !налить пиво (в ответ) — +1 пива пользователю\n"
+        "• !пиво (в ответ) — +1 пива пользователю\n"
         "• !статистика пива — рейтинг по пиву\n"
         "• !адрес [фамилия] — адрес организатора\n"
         "• !перепарсить — перезагрузить данные из Excel (только для админов)\n"
@@ -242,7 +242,17 @@ async def cmd_org_of_day(message: Message):
         await message.answer("❌ В базе нет организаторов.")
         return
     u = random.choice(users)
-    await message.answer(f"🏆 Организатор дня: <b>{html_escape(u.full_name)}</b> ({html_escape(u.department)}) 🎉", parse_mode="HTML")
+    
+    # Формируем сообщение с тегом
+    user_name = html_escape(u.full_name)
+    if u.telegram_username:
+        mention = f"@{u.telegram_username}"
+        response = f"🏆 Организатор дня: <b>{user_name}</b> ({html_escape(u.department)}) 🎉\n\n{mention}"
+    else:
+        # Если нет username, просто имя
+        response = f"🏆 Организатор дня: <b>{user_name}</b> ({html_escape(u.department)}) 🎉"
+    
+    await message.answer(response, parse_mode="HTML")
 
 
 @router.message(F.reply_to_message & F.text.regexp(r"^!нахуй\b", flags=0))
@@ -271,7 +281,7 @@ async def cmd_probability(message: Message):
     await message.answer(f"📊 Вероятность: {p}%")
 
 
-@router.message(F.text.regexp(r"^!налить\s+пиво\b", flags=0))
+@router.message(F.text.regexp(r"^!пиво\b", flags=0))
 async def cmd_beer_pour(message: Message):
     # Ожидаем ответ на сообщение пользователя или упоминание
     target_id = None
@@ -355,16 +365,8 @@ async def cmd_who(message: Message):
     user = random.choice(users)
     user_name = html_escape(user.full_name)
     
-    # Формируем сообщение в формате: {текст} - {человек}\n\n@{тег}
-    # Если есть telegram_username, используем его
-    if user.telegram_username:
-        mention = f"@{user.telegram_username}"
-    else:
-        # Если нет username, создаем тег из имени (заменяем пробелы на подчеркивания)
-        mention = f"@{user_name.replace(' ', '_')}"
-    
-    # Формат: {текст} - {человек}, затем две пустые строки, затем @{тег}
-    response = f"{text} - {user_name}\n\n{mention}"
+    # Формируем сообщение в формате: {текст} - {человек} (без тега)
+    response = f"{text} - {user_name}"
     
     await message.answer(response, parse_mode="HTML")
 
