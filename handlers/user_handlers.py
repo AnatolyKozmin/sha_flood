@@ -624,6 +624,47 @@ async def cmd_unmute_all(message: Message):
         await message.answer(f"❌ Ошибка при размуте: {html_escape(str(e))}", parse_mode="HTML")
 
 
+@router.message(F.text.regexp(r"^!пиздануть\b", flags=0))
+async def cmd_mention_all(message: Message):
+    """Отмечает всех участников из базы данных по их telegram_username"""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(User).where(User.telegram_username.isnot(None))
+        )
+        users = result.scalars().all()
+    
+    if not users:
+        await message.answer("❌ В базе нет пользователей с указанным telegram_username.")
+        return
+    
+    # Формируем список упоминаний
+    mentions = []
+    for user in users:
+        username = user.telegram_username.strip()
+        if username:
+            # Убираем @ если есть, потом добавим
+            username = username.lstrip('@')
+            if username:
+                mentions.append(f"@{username}")
+    
+    if not mentions:
+        await message.answer("❌ Не найдено пользователей с валидными юзернеймами.")
+        return
+    
+    # Отправляем все упоминания в одном сообщении (Telegram поддерживает до ~100 упоминаний)
+    # Если слишком много, разбиваем на части по 50
+    chunk_size = 50
+    if len(mentions) <= chunk_size:
+        mention_text = " ".join(mentions)
+        await message.answer(f"{mention_text}\n\n📢 Всего участников: {len(mentions)}")
+    else:
+        # Разбиваем на части
+        for i in range(0, len(mentions), chunk_size):
+            chunk = mentions[i:i + chunk_size]
+            mention_text = " ".join(chunk)
+            await message.answer(mention_text)
+        await message.answer(f"📢 Всего участников: {len(mentions)}")
+
 # Обработчик ответов на математическую дуэль
 @router.message(F.text.regexp(r"^\d+$", flags=0))
 async def handle_math_duel_answer(message: Message):
